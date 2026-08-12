@@ -41,12 +41,21 @@ input[type=checkbox]{width:22px;height:22px}
 .footerbar button{flex:1}
 canvas{width:100%;height:180px;background:var(--panel2);border-radius:12px}
 a{color:var(--accent)}
+.authbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0}.authbar input{width:min(220px,100%)}.authbar .status{color:var(--muted);font-size:12px}.recommendation{margin-top:8px;padding:8px 10px;border-left:3px solid var(--accent);background:var(--panel2);border-radius:8px;font-size:12px}.syncing{opacity:.65;pointer-events:none}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Minimum Effective Dose</h1>
   <div class="sub">Upper-body biased • 2 hard sets • near failure • minimal gym time</div>
+  <div class="card authbar">
+    <span id="authStatus" class="status">Sign in to sync across devices</span>
+    <input id="authEmail" type="email" autocomplete="email" placeholder="Email">
+    <input id="authPassword" type="password" autocomplete="current-password" placeholder="Password (6+ characters)">
+    <button id="signInBtn" onclick="signIn()">Sign in</button>
+    <button id="signUpBtn" onclick="signUp()">Create account</button>
+    <button id="signOutBtn" class="hidden" onclick="signOut()">Sign out</button>
+  </div>
 
   <div class="tabs">
     <button class="tab active" data-view="workout">Workout</button>
@@ -145,7 +154,10 @@ a{color:var(--accent)}
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.57.4/dist/umd/supabase.min.js" integrity="sha384-+YXFCwOjFhOv5j+f0sPHbAJN6hCwCFSQnJZTKIxB9IRNwmXkzAHaOtQjmaKBAoCH" crossorigin="anonymous"></script>
 <script>
+const db = window.supabase.createClient("https://grzyposkvvaxzelmnbbd.supabase.co","sb_publishable_o7FTdT7mZchN5ICGm_vMMA_-0eMh1ee");
+let activeUser = null;
 const workouts = {
 A:{
  title:"Workout A — Chest + Back",
@@ -191,14 +203,26 @@ let current = state.next || "A";
 let timerInt=null, timeLeft=120;
 
 function save(){localStorage.setItem("medTraining",JSON.stringify(state))}
+function rangeFor(text){const n=text.match(/(\d+)[^\d]+(\d+)/);return n?[+n[1],+n[2]]:[8,12]}
+function incrementFor(name){return /DB|Dumbbell/i.test(name)?5:/Cable|Lateral|Fly|Curl|Triceps|Rear-Delt/i.test(name)?2.5:5}
+function recommendation(name,range){
+ const history=state.sessions.slice().reverse().flatMap(s=>s.exercises||[]).filter(e=>e.name===name&&e.sets?.some(x=>x.weight&&x.reps));
+ if(!history.length)return "Start with a comfortable weight that leaves 1–2 reps in reserve.";
+ const last=history[0], valid=last.sets.filter(x=>x.weight&&x.reps), weight=valid[0]?.weight;
+ if(!weight)return "No prior loaded sets yet.";
+ const [low,high]=rangeFor(range), inc=incrementFor(name);
+ const allTop=valid.length===2&&valid.every(x=>x.reps>=high&&(x.rir==null||x.rir<=1.5));
+ const struggled=valid.some(x=>x.reps<low||(x.rir!=null&&x.rir<0));
+ const next=Math.max(0,weight+(allTop?inc:struggled?-inc:0));
+ return allTop?`Recommended: ${next} lb — you reached the top of the range.`:struggled?`Recommended: ${next} lb — reduce slightly and rebuild.`:`Recommended: ${weight} lb — keep the load and add reps.`;
+}
 function renderWorkout(){
  document.getElementById("sessionSelect").value=current;
  document.getElementById("sessionTitle").textContent=workouts[current].title;
  const last = [...state.sessions].reverse().find(s=>s.workout===current);
  let html="";
  workouts[current].exercises.forEach((e,i)=>{
-   html += `<div class="exercise">
-     <div class="row between"><div><div class="name">${e[0]}</div><div class="note">${e[3]}</div></div><span class="badge">${e[1]} × ${e[2]}</span></div>
+   html += `<div class="exercise">\n     <div class="row between"><div><div class="name">${e[0]}</div><div class="note">${e[3]}</div></div><span class="badge">${e[1]} × ${e[2]}</span></div>\n     <div class="recommendation">${recommendation(e[0],e[2])}</div>
      <div class="setgrid head"><div>Set</div><div>Weight</div><div>Reps</div><div>RIR</div></div>`;
    for(let s=1;s<=2;s++){
      let prev = last?.exercises?.[i]?.sets?.[s-1] || {};
@@ -213,7 +237,7 @@ function renderWorkout(){
  });
  document.getElementById("exerciseList").innerHTML=html;
 }
-function finishWorkout(){
+async function finishWorkout(){
  const ex=workouts[current].exercises.map((e,i)=>({
    name:e[0], sets:[1,2].map(s=>({
      weight:+document.getElementById(`w-${i}-${s}`).value||null,
@@ -221,7 +245,9 @@ function finishWorkout(){
      rir:+document.getElementById(`rir-${i}-${s}`).value||null
    }))
  }));
- state.sessions.push({date:new Date().toISOString(),workout:current,exercises:ex,notes:document.getElementById("sessionNotes").value});
+ const entry={date:new Date().toISOString(),workout:current,exercises:ex,notes:document.getElementById("sessionNotes").value};
+ state.sessions.push(entry);
+ if(activeUser){const {error}=await db.from("workout_sessions").insert({user_id:activeUser.id,performed_at:entry.date,workout:entry.workout,exercises:entry.exercises,notes:entry.notes});if(error)return alert("Saved on this device, but cloud sync failed: "+error.message)}
  state.next=current==="A"?"B":current==="B"?"C":"A";
  current=state.next; save(); document.getElementById("sessionNotes").value=""; renderWorkout(); renderHistory();
  alert("Workout saved. Next: Workout "+current);
@@ -236,16 +262,18 @@ function renderMobility(){
  <div class="row between exercise"><div><div class="name">${m[0]}</div><div class="note">${m[1]}</div></div>
  <input type="checkbox" id="mob-${i}"></div>`).join("");
 }
-function saveMobility(){
+async function saveMobility(){
  const completed=mobility.filter((_,i)=>document.getElementById(`mob-${i}`).checked).map(x=>x[0]);
- state.mobility.push({date:new Date().toISOString(),completed}); save(); renderHistory();
+ const entry={date:new Date().toISOString(),completed}; state.mobility.push(entry); save(); renderHistory();
+ if(activeUser){const {error}=await db.from("mobility_sessions").insert({user_id:activeUser.id,performed_at:entry.date,completed});if(error)return alert("Saved on this device, but cloud sync failed: "+error.message)}
  alert("Mobility saved.");
 }
-function saveCardio(){
+async function saveCardio(){
  const minutes=+document.getElementById("cardioMinutes").value;
  if(!minutes)return alert("Enter minutes.");
- state.cardio.push({date:new Date().toISOString(),type:document.getElementById("cardioType").value,minutes,
- load:+document.getElementById("cardioLoad").value||null,notes:document.getElementById("cardioNotes").value});
+ const entry={date:new Date().toISOString(),type:document.getElementById("cardioType").value,minutes,
+ load:+document.getElementById("cardioLoad").value||null,notes:document.getElementById("cardioNotes").value}; state.cardio.push(entry);
+ if(activeUser){const {error}=await db.from("cardio_sessions").insert({user_id:activeUser.id,performed_at:entry.date,activity_type:entry.type,minutes:entry.minutes,load:entry.load,notes:entry.notes});if(error)return alert("Saved on this device, but cloud sync failed: "+error.message)}
  save(); document.getElementById("cardioMinutes").value="";document.getElementById("cardioLoad").value="";
  document.getElementById("cardioNotes").value="";renderHistory(); alert("Cardio saved.");
 }
@@ -285,6 +313,28 @@ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
  ["workout","cardio","mobility","history"].forEach(v=>document.getElementById(v).classList.toggle("hidden",v!==b.dataset.view));
  document.getElementById("workoutFooter").style.display=b.dataset.view==="workout"?"block":"none";
 });
+async function loadCloud(){
+ const [{data:s,error:se},{data:c,error:ce},{data:m,error:me}]=await Promise.all([
+  db.from("workout_sessions").select("*").order("performed_at"),
+  db.from("cardio_sessions").select("*").order("performed_at"),
+  db.from("mobility_sessions").select("*").order("performed_at")
+ ]);
+ if(se||ce||me)return alert("Could not load cloud history: "+(se||ce||me).message);
+ state.sessions=(s||[]).map(x=>({date:x.performed_at,workout:x.workout,exercises:x.exercises,notes:x.notes}));
+ state.cardio=(c||[]).map(x=>({date:x.performed_at,type:x.activity_type,minutes:x.minutes,load:x.load,notes:x.notes}));
+ state.mobility=(m||[]).map(x=>({date:x.performed_at,completed:x.completed}));
+ const last=state.sessions[state.sessions.length-1];state.next=last?(last.workout==="A"?"B":last.workout==="B"?"C":"A"):"A";current=state.next;save();renderWorkout();renderHistory();
+}
+function showAuth(){
+ const signed=!!activeUser;document.getElementById("authStatus").textContent=signed?`Synced as ${activeUser.email}`:"Sign in to sync across devices";
+ ["authEmail","authPassword","signInBtn","signUpBtn"].forEach(id=>document.getElementById(id).classList.toggle("hidden",signed));
+ document.getElementById("signOutBtn").classList.toggle("hidden",!signed);
+}
+async function signIn(){const {error}=await db.auth.signInWithPassword({email:authEmail.value.trim(),password:authPassword.value});if(error)alert(error.message)}
+async function signUp(){const {error}=await db.auth.signUp({email:authEmail.value.trim(),password:authPassword.value});alert(error?error.message:"Account created. Check your email if confirmation is enabled, then sign in.")}
+async function signOut(){await db.auth.signOut()}
+db.auth.onAuthStateChange(async(_,session)=>{activeUser=session?.user||null;showAuth();if(activeUser)await loadCloud()});
+db.auth.getSession().then(({data})=>{activeUser=data.session?.user||null;showAuth();if(activeUser)loadCloud()});
 renderWorkout();renderMobility();renderHistory();
 </script>
 </body>
