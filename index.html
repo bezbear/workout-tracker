@@ -83,12 +83,20 @@ a{color:var(--accent)}
       </div>
     </div>
 
+    <div class="card">
+      <h2>Morning warm-up <span class="badge">6–8 min</span></h2>
+      <div class="small">Start easy—this should make you warm and mobile, not tired.</div>
+      <div id="warmupDetails"></div>
+    </div>
     <div id="exerciseList" class="card"></div>
 
     <div class="card">
       <h2>Rest timer</h2>
       <div class="timer" id="timer">02:00</div>
       <div class="row">
+        <button onclick="startTimer(30)">0:30</button>
+        <button onclick="startTimer(60)">1:00</button>
+        <button onclick="startTimer(90)">1:30</button>
         <button onclick="startTimer(120)">2:00</button>
         <button onclick="startTimer(180)">3:00</button>
         <button onclick="stopTimer()">Stop</button>
@@ -189,6 +197,36 @@ C:{
   ["Overhead Cable Triceps Extension","2","8–15","Failure okay"]
  ]}
 };
+const exerciseOptions = {
+ A:[
+  ["Incline Dumbbell Press","Incline Machine Press","Incline Barbell Press","Banded Chest Press","Feet-Elevated Push-Up"],
+  ["Neutral-Grip Lat Pulldown","Pull-Up / Assisted Pull-Up","Single-Arm Dumbbell Row","Banded Lat Pulldown","Inverted Row"],
+  ["Machine Chest Press","Flat Dumbbell Press","Barbell Bench Press","Banded Chest Press","Push-Up"],
+  ["Chest-Supported Machine Row","Chest-Supported Dumbbell Row","Cable Row","Banded Seated Row","Inverted Row"],
+  ["Cable Lateral Raise","Dumbbell Lateral Raise","Kettlebell Lateral Raise","Banded Lateral Raise","Bodyweight Y-Raise"]
+ ],
+ B:[
+  ["Romanian Deadlift — Barbell","Romanian Deadlift — Dumbbells","Romanian Deadlift — Kettlebells","Banded Good Morning","Single-Leg Bodyweight RDL"],
+  ["Bulgarian Split Squat","Leg Press","Dumbbell Split Squat","Kettlebell Goblet Squat","Bodyweight Split Squat","Banded Split Squat"],
+  ["Machine Shoulder Press","Dumbbell Shoulder Press","Kettlebell Press","Barbell Overhead Press","Banded Overhead Press","Pike Push-Up"],
+  ["Cable Row","Machine Row","One-Arm Dumbbell Row","Kettlebell Row","Banded Row","Inverted Row"],
+  ["Cable Fly","Machine Fly","Dumbbell Fly","Banded Fly","Wide Push-Up"]
+ ],
+ C:[
+  ["Machine Shoulder Press","Dumbbell Shoulder Press","Kettlebell Press","Barbell Overhead Press","Banded Overhead Press","Pike Push-Up"],
+  ["Chest-Supported Machine Row","Chest-Supported Dumbbell Row","Cable Row","Banded Row","Inverted Row"],
+  ["Incline Dumbbell Press","Incline Machine Press","Incline Barbell Press","Banded Chest Press","Feet-Elevated Push-Up"],
+  ["Cable Lateral Raise","Dumbbell Lateral Raise","Kettlebell Lateral Raise","Banded Lateral Raise","Bodyweight Y-Raise"],
+  ["Machine Rear-Delt Fly","Dumbbell Rear-Delt Fly","Cable Rear-Delt Fly","Banded Pull-Apart","Bodyweight Reverse Snow Angel"],
+  ["Incline Dumbbell Curl","Cable Curl","Kettlebell Curl","Barbell Curl","Banded Curl","Bodyweight Towel Curl"],
+  ["Overhead Cable Triceps Extension","Dumbbell Triceps Extension","Kettlebell Triceps Extension","Barbell Skull Crusher","Banded Triceps Extension","Close-Grip Push-Up"]
+ ]
+};
+const warmups={
+ A:["3–4 min easy bike, treadmill, rower, or brisk marching","Band pull-aparts × 15","Scapular push-ups × 8","Light press and pulldown ramp-up sets"],
+ B:["4–5 min easy bike, treadmill, or brisk marching","Cat-cow × 6","Bodyweight good mornings × 10","Alternating reverse lunges × 6/side","2–3 gradual RDL ramp-up sets"],
+ C:["3–4 min easy bike, rower, or brisk marching","Arm circles × 10 each direction","Band pull-aparts × 15","Wall slides × 8","Light shoulder-press ramp-up sets"]
+};
 const mobility = [
  ["90/90 switches","6 / side"],
  ["90/90 forward fold","30 sec / side"],
@@ -219,27 +257,36 @@ function recommendation(name,range){
 function renderWorkout(){
  document.getElementById("sessionSelect").value=current;
  document.getElementById("sessionTitle").textContent=workouts[current].title;
- const last = [...state.sessions].reverse().find(s=>s.workout===current);
+ document.getElementById("warmupDetails").innerHTML="<ol>"+warmups[current].map(x=>`<li style="margin:8px 0">${x}</li>`).join("")+"</ol>";
  let html="";
  workouts[current].exercises.forEach((e,i)=>{
-   html += `<div class="exercise">\n     <div class="row between"><div><div class="name">${e[0]}</div><div class="note">${e[3]}</div></div><span class="badge">${e[1]} × ${e[2]}</span></div>\n     <div class="recommendation">${recommendation(e[0],e[2])}</div>
+   const options=exerciseOptions[current][i],selected=options[0];
+   const lastExercise=state.sessions.slice().reverse().flatMap(x=>x.exercises||[]).find(x=>x.name===selected);
+   html += `<div class="exercise">
+     <div class="row between"><select id="ex-${i}" aria-label="Exercise ${i+1}" onchange="updateExerciseChoice(${i})" style="flex:1;min-width:220px">${options.map(x=>`<option>${x}</option>`).join("")}</select><span class="badge">${e[1]} × ${e[2]}</span></div>
+     <div class="note">${e[3]}</div>
+     <div class="recommendation" id="rec-${i}">${recommendation(selected,e[2])}</div>
      <div class="setgrid head"><div>Set</div><div>Weight</div><div>Reps</div><div>RIR</div></div>`;
    for(let s=1;s<=2;s++){
-     let prev = last?.exercises?.[i]?.sets?.[s-1] || {};
-     html += `<div class="setgrid">
-       <div>${s}</div>
+     const prev=lastExercise?.sets?.[s-1]||{};
+     html += `<div class="setgrid"><div>${s}</div>
        <input inputmode="decimal" type="number" id="w-${i}-${s}" placeholder="${prev.weight??'lb'}">
        <input inputmode="numeric" type="number" id="r-${i}-${s}" placeholder="${prev.reps??'reps'}">
-       <input inputmode="decimal" type="number" step="0.5" id="rir-${i}-${s}" placeholder="${prev.rir??'RIR'}">
-     </div>`;
+       <input inputmode="decimal" type="number" step="0.5" id="rir-${i}-${s}" placeholder="${prev.rir??'RIR'}"></div>`;
    }
-   html += `</div>`;
+   html += "</div>";
  });
  document.getElementById("exerciseList").innerHTML=html;
 }
+function updateExerciseChoice(i){
+ const name=document.getElementById(`ex-${i}`).value,e=workouts[current].exercises[i];
+ document.getElementById(`rec-${i}`).textContent=recommendation(name,e[2]);
+ const last=state.sessions.slice().reverse().flatMap(x=>x.exercises||[]).find(x=>x.name===name);
+ for(let s=1;s<=2;s++){const prev=last?.sets?.[s-1]||{};document.getElementById(`w-${i}-${s}`).placeholder=prev.weight??"lb";document.getElementById(`r-${i}-${s}`).placeholder=prev.reps??"reps";document.getElementById(`rir-${i}-${s}`).placeholder=prev.rir??"RIR"}
+}
 async function finishWorkout(){
  const ex=workouts[current].exercises.map((e,i)=>({
-   name:e[0], sets:[1,2].map(s=>({
+   name:document.getElementById(`ex-${i}`).value, sets:[1,2].map(s=>({
      weight:+document.getElementById(`w-${i}-${s}`).value||null,
      reps:+document.getElementById(`r-${i}-${s}`).value||null,
      rir:+document.getElementById(`rir-${i}-${s}`).value||null
