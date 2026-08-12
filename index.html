@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Minimum Effective Dose Training</title>
+<style>
+:root{
+  --bg:#0d0f12;--panel:#15181d;--panel2:#1c2026;--text:#f3f4f6;--muted:#9ca3af;
+  --line:#2a2f37;--accent:#f59e0b;--good:#22c55e;--bad:#ef4444;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.wrap{max-width:760px;margin:auto;padding:16px 16px 90px}
+h1{font-size:24px;margin:8px 0 4px} h2{font-size:18px;margin:0 0 12px}
+.sub{color:var(--muted);font-size:14px;margin-bottom:18px}
+.tabs{display:flex;gap:8px;position:sticky;top:0;background:linear-gradient(var(--bg) 75%,transparent);padding:10px 0 14px;z-index:4;overflow:auto}
+button,.pill{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:12px;padding:11px 14px;font-weight:650}
+button.active{background:var(--accent);color:#111;border-color:var(--accent)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.exercise{padding:14px 0;border-top:1px solid var(--line)}
+.exercise:first-child{border-top:0;padding-top:0}
+.name{font-weight:750;font-size:16px}.note{font-size:12px;color:var(--muted);margin-top:3px}
+.setgrid{display:grid;grid-template-columns:40px 1fr 1fr 1fr;gap:8px;align-items:center;margin-top:10px}
+.setgrid.head{font-size:11px;color:var(--muted);text-transform:uppercase}
+input,select,textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px;font-size:16px}
+input[type=checkbox]{width:22px;height:22px}
+.small{font-size:12px;color:var(--muted)}
+.badge{font-size:11px;border:1px solid var(--line);padding:5px 8px;border-radius:999px;color:var(--muted)}
+.primary{background:var(--accent);color:#111;border-color:var(--accent)}
+.green{background:var(--good);color:#06110a;border-color:var(--good)}
+.danger{background:transparent;color:#fca5a5}
+.stat{flex:1;min-width:95px;background:var(--panel2);padding:12px;border-radius:12px}
+.stat b{display:block;font-size:20px}
+.hidden{display:none}
+.timer{font-variant-numeric:tabular-nums;font-size:34px;font-weight:800}
+.footerbar{position:fixed;bottom:0;left:0;right:0;background:rgba(13,15,18,.96);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom));z-index:6}
+.footerbar>div{max-width:760px;margin:auto;display:flex;gap:8px}
+.footerbar button{flex:1}
+canvas{width:100%;height:180px;background:var(--panel2);border-radius:12px}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Minimum Effective Dose</h1>
+  <div class="sub">Upper-body biased • 2 hard sets • near failure • minimal gym time</div>
+
+  <div class="tabs">
+    <button class="tab active" data-view="workout">Workout</button>
+    <button class="tab" data-view="cardio">Cardio</button>
+    <button class="tab" data-view="mobility">Mobility</button>
+    <button class="tab" data-view="history">History</button>
+  </div>
+
+  <section id="workout">
+    <div class="card">
+      <div class="row between">
+        <div>
+          <div class="small">NEXT SESSION</div>
+          <h2 id="sessionTitle">Workout A</h2>
+        </div>
+        <select id="sessionSelect" style="width:auto">
+          <option value="A">A — Chest + Back</option>
+          <option value="B">B — Lower + Upper</option>
+          <option value="C">C — Shoulders + Arms</option>
+        </select>
+      </div>
+      <div class="row">
+        <span class="badge">Compounds: ~1 RIR</span>
+        <span class="badge">Stable/isolation: 0–1 RIR</span>
+      </div>
+    </div>
+
+    <div id="exerciseList" class="card"></div>
+
+    <div class="card">
+      <h2>Rest timer</h2>
+      <div class="timer" id="timer">02:00</div>
+      <div class="row">
+        <button onclick="startTimer(120)">2:00</button>
+        <button onclick="startTimer(180)">3:00</button>
+        <button onclick="stopTimer()">Stop</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Session notes</h2>
+      <textarea id="sessionNotes" rows="3" placeholder="Energy, pain, technique, anything notable..."></textarea>
+    </div>
+  </section>
+
+  <section id="cardio" class="hidden">
+    <div class="card">
+      <h2>Log cardio</h2>
+      <div class="row">
+        <select id="cardioType">
+          <option>Weighted walk</option><option>Bike</option><option>Elliptical</option><option>Rope flow</option><option>VO₂ intervals</option>
+        </select>
+        <input id="cardioMinutes" type="number" placeholder="Minutes">
+        <input id="cardioLoad" type="number" placeholder="Load (lb), optional">
+      </div>
+      <textarea id="cardioNotes" rows="2" placeholder="Zone 2, route, average HR, interval details..."></textarea>
+      <button class="primary" onclick="saveCardio()">Save cardio</button>
+    </div>
+    <div class="card">
+      <div class="row">
+        <div class="stat"><span class="small">7-day cardio</span><b id="cardio7">0</b><span class="small">minutes</span></div>
+        <div class="stat"><span class="small">7-day sessions</span><b id="cardioSessions7">0</b></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="mobility" class="hidden">
+    <div class="card">
+      <h2>Daily Hip 8</h2>
+      <div id="mobilityList"></div>
+      <button class="primary" onclick="saveMobility()">Complete mobility</button>
+    </div>
+  </section>
+
+  <section id="history" class="hidden">
+    <div class="card">
+      <h2>Training summary</h2>
+      <div class="row">
+        <div class="stat"><span class="small">Lift sessions</span><b id="liftCount">0</b></div>
+        <div class="stat"><span class="small">This month</span><b id="monthCount">0</b></div>
+        <div class="stat"><span class="small">Mobility days</span><b id="mobCount">0</b></div>
+      </div>
+    </div>
+    <div id="historyList"></div>
+    <div class="card">
+      <button class="danger" onclick="exportData()">Export JSON</button>
+      <button class="danger" onclick="clearData()">Clear all data</button>
+    </div>
+  </section>
+</div>
+
+<div class="footerbar" id="workoutFooter">
+  <div>
+    <button onclick="previousWorkout()">Previous</button>
+    <button class="green" onclick="finishWorkout()">Finish Workout</button>
+  </div>
+</div>
+
+<script>
+const workouts = {
+A:{
+ title:"Workout A — Chest + Back",
+ exercises:[
+  ["Incline DB / Machine Press","2","6–10","1 RIR → 0–1 RIR"],
+  ["Neutral-Grip Pulldown / Pull-Up","2","6–10","1 RIR → 0 RIR"],
+  ["Machine Chest Press","2","8–12","Last set to technical failure"],
+  ["Chest-Supported Row","2","8–12","Last set 0–1 RIR"],
+  ["Cable Lateral Raise","2","12–20","Technical failure okay"]
+ ]},
+B:{
+ title:"Workout B — Lower Maintenance + Upper",
+ exercises:[
+  ["Romanian Deadlift","2","6–10","1–2 RIR; no failure"],
+  ["Bulgarian Split Squat / Leg Press","2","8–12","~1 RIR"],
+  ["Machine / DB Shoulder Press","2","6–10","0–1 RIR"],
+  ["Cable / Machine Row","2","8–12","0–1 RIR"],
+  ["Cable Fly","2","10–15","Failure okay"]
+ ]},
+C:{
+ title:"Workout C — Shoulders + Arms",
+ exercises:[
+  ["Machine Shoulder Press","2","6–10","0–1 RIR"],
+  ["Chest-Supported Row","2","6–10","0–1 RIR"],
+  ["Incline / Machine Press","2","8–12","0–1 RIR"],
+  ["Cable Lateral Raise","2","12–20","Failure okay"],
+  ["Rear-Delt Fly","2","12–20","Failure okay"],
+  ["Incline DB / Cable Curl","2","8–15","Failure okay"],
+  ["Overhead Cable Triceps Extension","2","8–15","Failure okay"]
+ ]}
+};
+const mobility = [
+ ["90/90 switches","6 / side"],
+ ["90/90 forward fold","30 sec / side"],
+ ["Adductor rockback","8 / side"],
+ ["Couch stretch","45–60 sec / side"],
+ ["Cossack squat","5 / side"],
+ ["Deep squat hold / pry","30–60 sec"]
+];
+
+let state = JSON.parse(localStorage.getItem("medTraining")||'{"next":"A","sessions":[],"cardio":[],"mobility":[]}');
+let current = state.next || "A";
+let timerInt=null, timeLeft=120;
+
+function save(){localStorage.setItem("medTraining",JSON.stringify(state))}
+function renderWorkout(){
+ document.getElementById("sessionSelect").value=current;
+ document.getElementById("sessionTitle").textContent=workouts[current].title;
+ const last = [...state.sessions].reverse().find(s=>s.workout===current);
+ let html="";
+ workouts[current].exercises.forEach((e,i)=>{
+   html += `<div class="exercise">
+     <div class="row between"><div><div class="name">${e[0]}</div><div class="note">${e[3]}</div></div><span class="badge">${e[1]} × ${e[2]}</span></div>
+     <div class="setgrid head"><div>Set</div><div>Weight</div><div>Reps</div><div>RIR</div></div>`;
+   for(let s=1;s<=2;s++){
+     let prev = last?.exercises?.[i]?.sets?.[s-1] || {};
+     html += `<div class="setgrid">
+       <div>${s}</div>
+       <input inputmode="decimal" type="number" id="w-${i}-${s}" placeholder="${prev.weight??'lb'}">
+       <input inputmode="numeric" type="number" id="r-${i}-${s}" placeholder="${prev.reps??'reps'}">
+       <input inputmode="decimal" type="number" step="0.5" id="rir-${i}-${s}" placeholder="${prev.rir??'RIR'}">
+     </div>`;
+   }
+   html += `</div>`;
+ });
+ document.getElementById("exerciseList").innerHTML=html;
+}
+function finishWorkout(){
+ const ex=workouts[current].exercises.map((e,i)=>({
+   name:e[0], sets:[1,2].map(s=>({
+     weight:+document.getElementById(`w-${i}-${s}`).value||null,
+     reps:+document.getElementById(`r-${i}-${s}`).value||null,
+     rir:+document.getElementById(`rir-${i}-${s}`).value||null
+   }))
+ }));
+ state.sessions.push({date:new Date().toISOString(),workout:current,exercises:ex,notes:document.getElementById("sessionNotes").value});
+ state.next=current==="A"?"B":current==="B"?"C":"A";
+ current=state.next; save(); document.getElementById("sessionNotes").value=""; renderWorkout(); renderHistory();
+ alert("Workout saved. Next: Workout "+current);
+}
+function previousWorkout(){
+ current=current==="A"?"C":current==="B"?"A":"B"; renderWorkout();
+}
+document.getElementById("sessionSelect").onchange=e=>{current=e.target.value;renderWorkout()};
+
+function renderMobility(){
+ document.getElementById("mobilityList").innerHTML=mobility.map((m,i)=>`
+ <div class="row between exercise"><div><div class="name">${m[0]}</div><div class="note">${m[1]}</div></div>
+ <input type="checkbox" id="mob-${i}"></div>`).join("");
+}
+function saveMobility(){
+ const completed=mobility.filter((_,i)=>document.getElementById(`mob-${i}`).checked).map(x=>x[0]);
+ state.mobility.push({date:new Date().toISOString(),completed}); save(); renderHistory();
+ alert("Mobility saved.");
+}
+function saveCardio(){
+ const minutes=+document.getElementById("cardioMinutes").value;
+ if(!minutes)return alert("Enter minutes.");
+ state.cardio.push({date:new Date().toISOString(),type:document.getElementById("cardioType").value,minutes,
+ load:+document.getElementById("cardioLoad").value||null,notes:document.getElementById("cardioNotes").value});
+ save(); document.getElementById("cardioMinutes").value="";document.getElementById("cardioLoad").value="";
+ document.getElementById("cardioNotes").value="";renderHistory(); alert("Cardio saved.");
+}
+function renderHistory(){
+ const now=new Date(), weekAgo=new Date(Date.now()-7*864e5);
+ const c7=state.cardio.filter(x=>new Date(x.date)>=weekAgo);
+ document.getElementById("cardio7").textContent=c7.reduce((a,b)=>a+b.minutes,0);
+ document.getElementById("cardioSessions7").textContent=c7.length;
+ document.getElementById("liftCount").textContent=state.sessions.length;
+ document.getElementById("mobCount").textContent=state.mobility.length;
+ document.getElementById("monthCount").textContent=state.sessions.filter(x=>{
+   let d=new Date(x.date);return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear()
+ }).length;
+ const items=[
+   ...state.sessions.map(x=>({...x,kind:"Lift",label:`Workout ${x.workout}`})),
+   ...state.cardio.map(x=>({...x,kind:"Cardio",label:`${x.type} — ${x.minutes} min`})),
+   ...state.mobility.map(x=>({...x,kind:"Mobility",label:`Hip mobility — ${x.completed.length}/${mobility.length}`}))
+ ].sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,30);
+ document.getElementById("historyList").innerHTML=items.map(x=>`
+ <div class="card"><div class="row between"><div><div class="name">${x.label}</div>
+ <div class="note">${new Date(x.date).toLocaleString()}</div></div><span class="badge">${x.kind}</span></div>
+ ${x.notes?`<div class="small" style="margin-top:8px">${x.notes}</div>`:""}</div>`).join("") || `<div class="card small">No training logged yet.</div>`;
+}
+function startTimer(sec){
+ stopTimer();timeLeft=sec;drawTimer();
+ timerInt=setInterval(()=>{timeLeft--;drawTimer();if(timeLeft<=0){stopTimer();if(navigator.vibrate)navigator.vibrate([200,100,200]);}},1000)
+}
+function stopTimer(){if(timerInt)clearInterval(timerInt);timerInt=null}
+function drawTimer(){let m=Math.floor(timeLeft/60),s=timeLeft%60;document.getElementById("timer").textContent=`${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`}
+function exportData(){
+ const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="med-training-data.json";a.click();
+}
+function clearData(){if(confirm("Delete all workout data from this device?")){localStorage.removeItem("medTraining");location.reload()}}
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
+ document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");
+ ["workout","cardio","mobility","history"].forEach(v=>document.getElementById(v).classList.toggle("hidden",v!==b.dataset.view));
+ document.getElementById("workoutFooter").style.display=b.dataset.view==="workout"?"block":"none";
+});
+renderWorkout();renderMobility();renderHistory();
+</script>
+</body>
+</html>
