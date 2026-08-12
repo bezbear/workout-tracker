@@ -320,6 +320,14 @@ async function loadCloud(){
   db.from("mobility_sessions").select("*").order("performed_at")
  ]);
  if(se||ce||me)return alert("Could not load cloud history: "+(se||ce||me).message);
+ if(!(s||[]).length&&!(c||[]).length&&!(m||[]).length&&(state.sessions.length||state.cardio.length||state.mobility.length)){
+  const uploads=[];
+  if(state.sessions.length)uploads.push(db.from("workout_sessions").insert(state.sessions.map(x=>({user_id:activeUser.id,performed_at:x.date,workout:x.workout,exercises:x.exercises,notes:x.notes||""}))));
+  if(state.cardio.length)uploads.push(db.from("cardio_sessions").insert(state.cardio.map(x=>({user_id:activeUser.id,performed_at:x.date,activity_type:x.type,minutes:x.minutes,load:x.load,notes:x.notes||""}))));
+  if(state.mobility.length)uploads.push(db.from("mobility_sessions").insert(state.mobility.map(x=>({user_id:activeUser.id,performed_at:x.date,completed:x.completed}))));
+  const results=await Promise.all(uploads);const failed=results.find(x=>x.error);if(failed)return alert("Could not import device history: "+failed.error.message);
+  return loadCloud();
+ }
  state.sessions=(s||[]).map(x=>({date:x.performed_at,workout:x.workout,exercises:x.exercises,notes:x.notes}));
  state.cardio=(c||[]).map(x=>({date:x.performed_at,type:x.activity_type,minutes:x.minutes,load:x.load,notes:x.notes}));
  state.mobility=(m||[]).map(x=>({date:x.performed_at,completed:x.completed}));
